@@ -16,7 +16,15 @@ cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
   --rpc-url $RPC
 ```
 
-`$TRADER` is the address that will send the swap. The selector is `0xfc847c2b`. Show `$QUOTE_BLOCK` in the confirmation. The freshness window is 60 seconds of chain time after `$QUOTE_TS`, measured with the latest block timestamp, not the chat clock. If the user confirms after that, the send happens after that, or a preview expires, that confirmation is void: quote again, simulate again, and ask again.
+`$TRADER` is the address that will send the swap. The selector is `0xfc847c2b`. Show `$QUOTE_BLOCK` in the confirmation. The freshness window is 60 seconds of chain time after `$QUOTE_TS`, measured with the latest block timestamp, not the chat clock.
+
+**Timing for BAW Portal trades:** do not open the confirmation until `contract-call preview` has succeeded. Then set `$QUOTE_TS` to the latest block timestamp at preview success (keep `$QUOTE_BLOCK` from this quote pass). That way prep time does not burn the 60s confirm window. In the summary, say the user should confirm within ~50s.
+
+If the user confirms after that window, a preview expires, or you have not yet broadcast when the window ends: that confirmation is void — do **not** send. Silently quote again, simulate again, preview again, and present **one** new summary + chips. Do not ask whether to retry. If a transaction was already broadcast late, do not send a second one; judge the existing hash with `references/receipt.md` (it may note the late window, but still applies the fill rules).
+
+Paths A/B only. Path C uses `baw market-order quote` in `references/graduated.md`.
+
+`quoteExactInput` does **not** check Agent ID NFT ownership. On path B, finish `references/agent-id-gate.md` before this file. A quote for a non-holder is not permission to trade.
 
 After an approve receipt, this file is not the last step. Quote here, then go to `references/swap.md` "Floor" and "Simulate". Do not confirm the swap on this quote alone.
 

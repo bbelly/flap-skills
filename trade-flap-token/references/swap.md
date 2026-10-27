@@ -1,6 +1,10 @@
 # Swap
 
-Every buy and sell in this skill is Portal `swapExactInput`. The selector is `0xef7ec2e7`. `permitData` is `0x`. Do not build `swapExactInputV3`. Do not pass a fixed gas limit. The website's old `600000` gas figure is not an argument to copy.
+Paths A and B only (inner market). Path C is `references/graduated.md`.
+
+Every buy and sell here is Portal `swapExactInput`. The selector is `0xef7ec2e7`. `permitData` is `0x`. Do not build `swapExactInputV3`. Do not pass a fixed gas limit. The website's old `600000` gas figure is not an argument to copy.
+
+Path B: signer is BAW only. Do not print or run `cast send`. Approves and swaps use `baw contract-call` preview/execute.
 
 Sections run in this order: approve check, simulation, confirmation, send. Every command that sends a transaction is in the last section, "Send". Do not run one before its own confirmation.
 
@@ -46,6 +50,8 @@ The approve confirmation shows: the token being approved (full address and symbo
 
 ## Floor
 
+Whether a buy cap exists is defined only in `references/tax-and-quota.md` ("No cap wins", including `remaining == 2^256 - 1`). Decide that first. The table below uses that result; do not treat a max-uint `remaining` as a real cap.
+
 Read numbers from `cast` as the first integer on the line only. `cast` prints `1710194868288753060294554 [1.71e24]`. The bracket is display. Do the math with integers (shell `$(( ))` overflows; use Python `int` or JavaScript `BigInt`), never floats.
 
 ```text
@@ -56,7 +62,7 @@ Pick the first `basis` this way:
 
 | Case | First `basis` |
 |---|---|
-| No buy cap, or a sell | the `quoteExactInput` result |
+| No buy cap (per `tax-and-quota.md`), or a sell | the `quoteExactInput` result |
 | A buy cap exists and the quote is no larger than `remaining` | the `quoteExactInput` result |
 | A buy cap exists and the quote is larger than `remaining` | `remaining` |
 
@@ -102,11 +108,13 @@ The swap calldata must start with `0xef7ec2e7`. The approve calldata must start 
 
 Do not open this section for a swap until "Simulate" has succeeded on the current quote. After an approve, that means the post-approve quote and the second `cast call`, not the pre-approve numbers.
 
-Each transaction gets its own summary and its own confirmation: one for the approve, one for the swap.
+Each transaction gets its own summary and its own confirmation: one for the approve, one for the swap. No other gates (no audit `继续`).
 
-The swap summary shows `to`, `value`, every `swapExactInput` argument, the calldata, the quote, the simulated output, `minOutputAmount` and its basis, slippage, both tax rates, the buy quota, `version()`, the quote block, and the audit status. For a 15% default, include the MEV sentence from `references/quote.md`.
+Emit **one** user-facing confirmation message per transaction. Do not split "here is the quote" and "now please confirm" across turns once preview is ready.
 
-For Binance Agentic Wallet, run the preview from "Send" before asking. From a successful preview, add all of these to the summary:
+The swap summary shows `to`, `value`, every `swapExactInput` argument, the calldata, the quote, the simulated output, `minOutputAmount` and its basis, slippage, both tax rates, the buy quota, `version()`, the quote block, the audit status (or `audit: unavailable`), and a **confirm within ~50s** line. Path B also includes the Agent ID lines from `references/agent-id-gate.md`. For a 15% default, include the MEV sentence from `references/quote.md`.
+
+For Binance Agentic Wallet, run the preview from "Send" before asking. Refresh `$QUOTE_TS` at preview success. From a successful preview, add all of these to the **same** summary:
 
 - `data.requestId`
 - `data.parsedTx` — `parsedTx.amount` is the smallest unit (wei for BNB). Divide by `decimals` from `data.tokenInfos` before showing a human amount.
@@ -119,7 +127,7 @@ For Binance Agentic Wallet, run the preview from "Send" before asking. From a su
 
 Those three change lists live under `simulationResult`, not at the top of `data`. If `simulationResult` is missing, the preview is unusable: stop. If the preview disagrees with your summary (another `to`, another amount, an unexpected allowance or authority change), stop and show both. A preview without `requestId`, or `351803`, stops the order.
 
-Only a reply sent after that summary (and, for BAW, after that preview) counts. The reply must be just `yes`, `confirm`, `go ahead`, `确认`, or `同意`. A question, a condition, or a longer sentence that contains one of those words is not a confirmation. Anything earlier does not count.
+Only a reply sent after that summary (and, for BAW, after that preview) counts. The reply must be just `yes`, `confirm`, `go ahead`, `确认`, or `同意`. When the host supports choice chips or buttons, present those exact confirm strings plus `取消` / `cancel` (preferred over typing). A chip that submits one of the confirm strings counts. A question, a condition, or a longer sentence that contains one of those words is not a confirmation. Anything earlier does not count.
 
 When the reply arrives, read the chain time before acting on it:
 
@@ -127,17 +135,37 @@ When the reply arrives, read the chain time before acting on it:
 cast block latest --field timestamp --rpc-url $RPC
 ```
 
-If that is more than 60 seconds after `$QUOTE_TS` from `references/quote.md`, or the BAW preview expired: the confirmation is void. Quote again, set the floor again, simulate again, preview again, and ask again. Never send a call that differs from the one the user confirmed.
+If that is more than 60 seconds after `$QUOTE_TS` from `references/quote.md`, or the BAW preview expired: the confirmation is void. Quote again, set the floor again, simulate again, preview again, and show **one** new summary + chips (do not ask "retry?"). Never send a call that differs from the one the user confirmed.
 
 ## Send, only after that confirmation
 
-Own signer. Use a hardware wallet (`--ledger` or `--trezor`) or a Foundry keystore (`--account <name>`). Browser wallets and WalletConnect are out of scope. Do not use `--private-key`, `--mnemonic`, `--interactive`, or a password on the command line. Do not add `--gas-limit`. Print the `cast send` command. Do not run it from the agent shell: the password or device confirm is interactive. The user runs it in their own terminal and pastes the hash.
+### Path B, or path A with BAW
 
-The printed command has no shell variables. The user's terminal does not have them. Substitute every value as a literal: addresses in full, amounts as base-unit integers, the RPC URL, and the signer flag. The arguments must match the confirmed summary character for character. Do not print a keyed RPC URL that holds a secret; use the public fallback from `references/preflight.md` instead.
+Do not use `cast send`. The preview runs before the confirmation. Only `execute` runs after it.
 
-Always include `--from <trader>`. Quote, quota, balance, and simulation were all read for that address. If the hardware wallet path or keystore resolves to another address, `cast` refuses to send. For a Ledger or Trezor account that is not the default path, also pass the user's `--mnemonic-derivation-path`; ask for it, do not guess.
+```bash
+# Before the confirmation:
+baw contract-call preview --binanceChainId 56 --from $TRADER \
+  --to <Portal for the swap, the input token for the approve> \
+  --value <wei integer> --inputData <calldata from "Calldata"> --json
 
-Tell the user to run it now. If the command is not run within 60 seconds of `$QUOTE_TS`, do not run it: come back, and the flow restarts at Step 4. The swap has no deadline argument; `minOutputAmount` is the only on-chain guard after that.
+# After the confirmation:
+baw contract-call execute --requestId <requestId from that preview> --json
+```
+
+No `--gasLimit` and no gas-price flags. A `requestId` from another chat, another preview, or an older preview is dead. See `references/errors.md`.
+
+Do not change `to`, `value`, or the calldata after confirmation. Then go to `references/receipt.md`.
+
+### Path A with cast only
+
+Use a hardware wallet (`--ledger` or `--trezor`) or a Foundry keystore (`--account <name>`). Browser wallets and WalletConnect are out of scope. Do not use `--private-key`, `--mnemonic`, `--interactive`, or a password on the command line. Do not add `--gas-limit`. Print the `cast send` command. Do not run it from the agent shell: the password or device confirm is interactive. The user runs it in their own terminal and pastes the hash.
+
+The printed command has no shell variables. Substitute every value as a literal: addresses in full, amounts as base-unit integers, the RPC URL, and the signer flag. Always include `--from <trader>` and `--chain 56` plus `--rpc-url <rpc>` (same chain-56 RPC as preflight). The arguments must match the confirmed summary character for character. Do not print a keyed RPC URL that holds a secret; use the public fallback from `references/preflight.md`.
+
+For a Ledger or Trezor account that is not the default path, also pass the user's `--mnemonic-derivation-path`; ask for it, do not guess.
+
+Tell the user to run it now. If more than 60 seconds of chain time have passed since `$QUOTE_TS`, do **not** send: go back to Step 4 and quote again. A confirmation that is still unused after that window is void. If the user already broadcast a late transaction, do not send another; judge that hash with `references/receipt.md` (it may note the late window). The swap has no deadline argument; `minOutputAmount` is the only on-chain guard after broadcast.
 
 ```bash
 # Approve, after the approve confirmation (literal values):
@@ -153,19 +181,5 @@ cast send 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
   --value <value> \
   --from <trader> --chain 56 --rpc-url <rpc> <signer flag>
 ```
-
-Binance Agentic Wallet. Do not use `cast send`. The preview runs before the confirmation. Only `execute` runs after it.
-
-```bash
-# Before the confirmation:
-baw contract-call preview --binanceChainId 56 --from $TRADER \
-  --to <Portal for the swap, the input token for the approve> \
-  --value <wei integer> --inputData <calldata from "Calldata"> --json
-
-# After the confirmation:
-baw contract-call execute --requestId <requestId from that preview> --json
-```
-
-No `--gasLimit` and no gas-price flags. A `requestId` from another chat, another preview, or an older preview is dead. See `references/errors.md`.
 
 Do not change `to`, `value`, or the calldata after confirmation. Then go to `references/receipt.md`.

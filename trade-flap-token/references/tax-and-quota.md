@@ -16,11 +16,11 @@ A high tax is a warning. It is not a reason to edit the calldata, and it is not 
 
 ## Audit
 
-Follow `references/safety.md`. "This skill has no audit feed" is a stop, not a skip. A buy is not ready to quote, preview, or confirm until the audit step has either returned a usable result or the user has replied a standalone `continue` / `继续` after the no-audit message defined there.
+Follow `references/safety.md`. Try the audit on a buy; if unavailable, warn in the trade summary and continue — do not add a separate `继续` round.
 
 ## Buy quota
 
-Read this for a buy that is still on the inner market. Skip it for a sell.
+Read this for a **buy** on path A or B (inner market). Skip it for a sell. Skip it on path C (graduated); market-order has no Portal quota.
 
 ```bash
 cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
@@ -34,13 +34,18 @@ cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
   --rpc-url $RPC
 ```
 
-`buyQuotaOf` returns `(bought, remaining)` in token base units. `$TRADER` is the address that will send the transaction. Quota is accumulated by `tx.origin`. A sell does not restore it. A Binance Agentic Wallet `contract-call` is sent from the BAW address itself (observed in real fills), so `buyQuotaOf(token, <BAW address>)` is this user's quota.
+`buyQuotaOf` returns `(bought, remaining)` in token base units. `$TRADER` is the address that will send the transaction. Quota is keyed by `tx.origin`. A sell does not restore a non-gated holding-style view the same way; on Agent ID-gated tokens, sells reduce `netBought` (see below). A Binance Agentic Wallet `contract-call` is sent from the BAW address itself (observed in real fills), so `buyQuotaOf(token, <BAW address>)` is this user's quota.
 
-**No cap wins.** There is no cap when any of these is true: `bps` is 0, `maxBuyAmount` is 0, or `remaining` is `2^256 - 1`. A `remaining` of 0 does not override that. Do not print `2^256 - 1` as tokens left.
+**No cap wins.** There is no cap when any of these is true: `bps` is 0, `maxBuyAmount` is 0, or `remaining` is `2^256 - 1`. A `remaining` of 0 does not override that. Do not print `2^256 - 1` as tokens left. Never hardcode "2%" — Agent ID-gated launches often use 200 bps, but the live `maxBuyPerOrigin` is authoritative for every token.
+
+**Gated vs non-gated (when a cap exists):**
+
+- Non-gated: `bought` tracks holding-style usage (balance-based). Transfers move the live balance component.
+- Agent ID-gated: `bought` is `max(netBought, balanceOf(origin))`. Curve sells reduce `netBought` (clamped at zero); transferring tokens out does not free `netBought`. Path B sells are **not** stopped by buy-cap remaining; only the NFT check applies (`references/agent-id-gate.md`).
 
 Only when a cap exists:
 
-- `remaining` of 0: this trader's inner-market buy quota is used up. Stop. Do not shrink the order or split it.
-- The `quoteExactInput` result is larger than `remaining`: the user may not get the full quote. The first simulation in `references/swap.md` uses `remaining` as the floor basis, so a swap that does cap still passes. If that simulation returns more than `remaining`, the quota view did not reduce the swap: the floor moves up to the simulated output, and the swap is simulated again. If it returns no more than `remaining`, the floor stays on `remaining`. Say the website treats unused input as refunded. Check the receipt before calling it a full fill.
+- `remaining` of 0: this trader's inner-market buy quota is used up. Stop the **buy**. Do not shrink the order or split it.
+- The `quoteExactInput` result is larger than `remaining`: the user may not get the full quote. The first simulation in `references/swap.md` uses `remaining` as the floor basis. If that simulation returns more than `remaining`, the quota view did not reduce the swap: the floor moves up to the simulated output, and the swap is simulated again. If it returns no more than `remaining`, the floor stays on `remaining`. Say unused input may be refunded. Check the receipt before calling it a full fill.
 
-Going over the quota does not always revert. That is why the simulation decides the final floor. Do not lower the floor and then skip the simulation. `references/swap.md` "Floor" and "Simulate" are the only source for this order.
+Going over the quota does not always revert. That is why the simulation decides the final floor. Do not lower the floor and then skip the simulation.

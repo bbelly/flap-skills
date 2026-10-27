@@ -1,5 +1,7 @@
 # Receipt
 
+Paths A and B (Portal) only. Path C uses `market-order list` terminal status in `references/graduated.md`.
+
 A submitted hash is not a fill. If the receipt is not available yet, say the transaction is still processing. Do not report a fill, and do not send a second one.
 
 For Binance Agentic Wallet, `PENDING_CONFIRMATION` with an empty hash is also not a fill. Follow `references/errors.md`: check `tx-lock`, then pending history. A `LOCKED` wallet does not get another trade.
@@ -20,7 +22,7 @@ The hash must come from this send: the `cast send` output, the `execute` output,
 cast tx $TX_HASH --rpc-url $RPC
 ```
 
-- The receipt block is after the quote block. If its timestamp is more than 60 seconds after `$QUOTE_TS`, the send was late: still judge the fill below, and tell the user it ran outside the confirmed window.
+- The receipt block is after the quote block. If its timestamp is more than 60 seconds after `$QUOTE_TS`, the broadcast was late: do not send another trade; still judge this hash with the fill rules below, and tell the user it ran outside the confirmed window.
 - `from` is the trader, `to` is Portal, `value` is the confirmed `value`, and `input` is exactly the confirmed calldata.
 
 This applies to Binance Agentic Wallet too. Observed BAW `contract-call` fills were plain transactions: `from` the BAW address, `to` Portal, the confirmed calldata unchanged. If a BAW transaction does not match, do not report a fill. Say the outer transaction differs from the confirmed call, show both, and do not send another trade.
