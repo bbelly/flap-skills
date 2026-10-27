@@ -1,17 +1,10 @@
 # Token state
 
-Read the token with `getTokenV8Safe`. Do not use `getTokenV8` or `getTokenV9Safe`.
+Read the token with Portal `getTokenV8Safe(address token)` (selector `0x62fafcca`). Do not use `getTokenV8` or `getTokenV9Safe`. The full return-tuple types are in `references/interface.md`.
 
-```bash
-cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
-  "getTokenV8Safe(address)((uint8,uint256,uint256,uint256,uint8,uint256,uint256,uint256,uint256,address,bool,bytes32,uint256,uint256,address,uint256,uint8,uint8))" \
-  $TOKEN \
-  --rpc-url $RPC
-```
+Decode the return value against those types. Every field is an integer, address, bool, or `bytes32` — keep integers as integers (never floats). `circulatingSupply` compared as a float is wrong.
 
-`cast` prints large integers as `<integer> [<short form>]`. Use only the first integer on each field, never the bracket. `circulatingSupply` compared as a float is wrong.
-
-Decode the tuple in this order:
+The tuple fields, in order:
 
 | Index | Field |
 |---|---|
@@ -38,14 +31,9 @@ An unknown address reverts with `TokenNotFound` (selector `0xde6137d1`). That is
 
 ## Agent ID gate (per token)
 
-```bash
-cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
-  "nftGate(address)(address)" \
-  $TOKEN \
-  --rpc-url $RPC
-```
+Call Portal `nftGate(address token)` (selector `0x9b95f8dc`, returns `address`).
 
-Selector `0x9b95f8dc`. Feature-detect: if the call reverts (Portal older than the gate surface), treat `$NFT_GATE` as the zero address and say the Portal build has no `nftGate`.
+Feature-detect: if the call reverts (Portal older than the gate surface), treat `$NFT_GATE` as the zero address and say the Portal build has no `nftGate`.
 
 - Zero address → this token has **no** Agent ID gate (path A or C).
 - Non-zero → `$NFT_GATE` is that token's ERC-721 collection (path B while on the curve). The gate is **per token**, not site-wide. Do not assume Binance Agent ID or any other fixed collection.
@@ -84,7 +72,7 @@ Any other non-zero `extensionID`: stop. It may need `swapExactInputV3`, which th
 
 `status` is 1, `$NFT_GATE` is zero, and `extensionID` is allowed above.
 
-Signer: Binance Agentic Wallet first (see `references/preflight.md`). Cast fallback only when BAW is not signed in.
+Signer: Binance Agentic Wallet first (see `references/preflight.md`). A non-BAW signer only when BAW is not signed in.
 
 Then pick payment:
 
@@ -100,7 +88,7 @@ Then pick payment:
 
 `status` is 1, `$NFT_GATE` is non-zero, and `extensionID` is allowed above.
 
-- Signer is **Binance Agentic Wallet only**. If BAW is not signed in, stop and ask the user to sign in. Do not offer a hardware wallet or keystore. If this conversation already chose cast for another order, that choice does not apply here: stop and say this token requires BAW.
+- Signer is **Binance Agentic Wallet only**. If BAW is not signed in, stop and ask the user to sign in. Do not offer a hardware wallet or keystore. If this conversation already chose a non-BAW signer for another order, that choice does not apply here: stop and say this token requires BAW.
 - Read `references/agent-id-gate.md` before quoting. Payment / quote-token rules are the same as path A after the NFT check passes.
 - Trade ABI is still `swapExactInput`. The gate does not change calldata shape.
 

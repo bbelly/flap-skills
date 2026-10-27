@@ -6,9 +6,7 @@ A submitted hash is not a fill. If the receipt is not available yet, say the tra
 
 For Binance Agentic Wallet, `PENDING_CONFIRMATION` with an empty hash is also not a fill. Follow `references/errors.md`: check `tx-lock`, then pending history. A `LOCKED` wallet does not get another trade.
 
-```bash
-cast receipt $TX_HASH --rpc-url $RPC
-```
+Read the receipt for `$TX_HASH` (`eth_getTransactionReceipt`, or your library's equivalent).
 
 About 30 seconds without a receipt means still processing. Do not invent a speed-up transaction on this Portal path.
 
@@ -16,11 +14,9 @@ About 30 seconds without a receipt means still processing. Do not invent a speed
 
 ### The transaction is this order
 
-The hash must come from this send: the `cast send` output, the `execute` output, or a `tx-history --type pending` entry that appeared after this `execute`. A hash from an older trade is not this order, even when its event matches.
+The hash must come from this send: the hash the user pasted back from their own signer, the `execute` output, or a `tx-history --type pending` entry that appeared after this `execute`. A hash from an older trade is not this order, even when its event matches.
 
-```bash
-cast tx $TX_HASH --rpc-url $RPC
-```
+Read the transaction itself for `$TX_HASH` (`eth_getTransactionByHash`).
 
 - The receipt block is after the quote block. If its timestamp is more than 60 seconds after `$QUOTE_TS`, the broadcast was late: do not send another trade; still judge this hash with the fill rules below, and tell the user it ran outside the confirmed window.
 - `from` is the trader, `to` is Portal, `value` is the confirmed `value`, and `input` is exactly the confirmed calldata.
@@ -29,7 +25,7 @@ This applies to Binance Agentic Wallet too. Observed BAW `contract-call` fills w
 
 ### The Portal event
 
-Decode logs from Portal `0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0`. `TokenBought` and `TokenSold` have no indexed fields, so a matching log has exactly one topic, the event hash below. If a future Portal version indexes those fields, every receipt will fail this check. Say that the event shape may have changed. Do not report a fill.
+Decode logs from Portal `0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0`. `TokenBought` and `TokenSold` have no indexed fields, so a matching log has exactly one topic, the event hash below, and all seven fields are ABI-encoded in the log `data` in this order. If a future Portal version indexes those fields, every receipt will fail this check. Say that the event shape may have changed. Do not report a fill.
 
 ```text
 TokenBought(uint256 ts, address token, address buyer, uint256 amount, uint256 eth, uint256 fee, uint256 postPrice)
@@ -59,11 +55,7 @@ On a capped buy, check the refund with balances, not with `TokenBought.eth`. On 
 
 Then read the trader's token balance. For BAW, `baw wallet balance --tokenAddress $TOKEN --binanceChainId 56` is enough. If the read fails, say the balance was not checked. Do not invent it.
 
-After a sell, read what is left of the approval:
-
-```bash
-cast call $TOKEN "allowance(address,address)(uint256)" $TRADER 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 --rpc-url $RPC
-```
+After a sell, read what is left of the approval: `allowance($TRADER, Portal)` on `$TOKEN` (selector `0xdd62ed3e`).
 
 An exact approve that the sell used up is 0: say "Portal allowance is 0, nothing to revoke." Only when it is above 0, say the user can revoke Portal in a new transaction with its own confirmation. Do not start that revoke.
 

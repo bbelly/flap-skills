@@ -6,23 +6,25 @@ This gate is **per token**. Each gated token points at its own ERC-721 collectio
 
 ## Signer
 
-Binance Agentic Wallet only. `$TRADER` is the BAW address for chain `"56"`. The on-chain check uses `tx.origin`; BAW `contract-call` is sent from that address. Do not use cast, a hardware wallet, or another EOA for path B.
+Binance Agentic Wallet only. `$TRADER` is the BAW address for chain `"56"`. The on-chain check uses `tx.origin`; BAW `contract-call` is sent from that address. Do not use a hardware wallet, a keystore, or another EOA for path B.
 
 If BAW is not `CONNECTED`, stop:
 
 > This token is Agent ID-gated on the inner market. Sign in to Binance Agentic Wallet, then retry.
 
-Do not list cast as an alternative. Do not offer a multi-signer picker on this path.
+Do not list another signer as an alternative. Do not offer a multi-signer picker on this path.
 
 ## Eligibility
 
 `$NFT_GATE` is the address from `nftGate(token)`.
 
-```bash
-cast call $NFT_GATE "balanceOf(address)(uint256)" $TRADER --rpc-url $RPC
-cast call $NFT_GATE "name()(string)" --rpc-url $RPC
-cast call $NFT_GATE "symbol()(string)" --rpc-url $RPC
-```
+Call these on the `$NFT_GATE` collection (ERC-721 / ERC-20 shared selectors, see `references/interface.md`):
+
+| Call | Selector | Returns |
+|---|---|---|
+| `balanceOf($TRADER)` | `0x70a08231` | `uint256` — number of NFTs held from this collection |
+| `name()` | `0x06fdde03` | `string` |
+| `symbol()` | `0x95d89b41` | `string` |
 
 `name` / `symbol` may revert; then show the collection address alone.
 

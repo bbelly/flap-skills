@@ -2,13 +2,17 @@
 
 Paths A and B only (inner market). Path C is `references/graduated.md`.
 
-Every buy and sell here is Portal `swapExactInput`. The selector is `0xef7ec2e7`. `permitData` is `0x`. Do not build `swapExactInputV3`. Do not pass a fixed gas limit. The website's old `600000` gas figure is not an argument to copy.
+Every buy and sell here is Portal `swapExactInput`. The selector is `0xef7ec2e7`. `permitData` is `0x`. Do not build `swapExactInputV3`. Do not pass a fixed gas limit. The website's old `600000` gas figure is not an argument to copy. Function signatures, selectors, and errors are in `references/interface.md`.
 
-Path B: signer is BAW only. Do not print or run `cast send`. Approves and swaps use `baw contract-call` preview/execute.
+Path B: signer is BAW only. Do not hand the transaction to any other signer. Approves and swaps use `baw contract-call` preview/execute.
 
-Sections run in this order: approve check, simulation, confirmation, send. Every command that sends a transaction is in the last section, "Send". Do not run one before its own confirmation.
+Sections run in this order: approve check, simulation, calldata, confirmation, send. Every transaction is sent in the last section, "Send". Do not send one before its own confirmation.
 
 ## Fields
+
+```text
+swapExactInput((address inputToken, address outputToken, uint256 inputAmount, uint256 minOutputAmount, bytes permitData) params) payable returns (uint256 outputAmount)
+```
 
 | Field | Buy with BNB | Buy with quote token | Sell |
 |---|---|---|---|
@@ -28,31 +32,23 @@ Buy with BNB is this one call for both a native-quoted token and an ERC-20-quote
 
 BNB buys skip this section.
 
-```bash
-cast call $INPUT_TOKEN "allowance(address,address)(uint256)" $TRADER 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 --rpc-url $RPC
-```
+Read `allowance($TRADER, Portal)` on `$INPUT_TOKEN` (selector `0xdd62ed3e`, returns `uint256`).
 
 - At least `inputAmount`: no approve. Go to "Simulate".
 - Already `type(uint256).max`: say the approval is already unlimited. Do not increase it. Go to "Simulate".
 - Below `inputAmount`: the next transaction is only an approve of exactly `inputAmount`. Do not simulate the swap yet, and do not attach it to the same confirmation.
 
-Simulate the approve before asking:
-
-```bash
-cast call $INPUT_TOKEN "approve(address,uint256)(bool)" \
-  0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 $INPUT_AMOUNT \
-  --from $TRADER --rpc-url $RPC
-```
+Simulate the approve before asking: an `eth_call` to `$INPUT_TOKEN` of `approve(Portal, $INPUT_AMOUNT)` (selector `0x095ea7b3`, returns `bool`) with `from` = `$TRADER`.
 
 If it reverts while the current allowance is above 0, the token may require a reset to 0 first (USDT-style). Then the next transaction is `approve(Portal, 0)` alone, with its own confirmation and its own receipt. After that, simulate the exact approve again. Do not reset an allowance that is already 0, and do not reset without that revert. Any other revert stops the order.
 
-The approve confirmation shows: the token being approved (full address and symbol), the spender (Portal, full address), the amount in base units and in human units, and the sentence "Exact amount, not unlimited." For Binance Agentic Wallet, run the approve preview from "Send" first and show its fields too. Then go to "Confirm". After the approve is sent, wait for a receipt with status 1, read `allowance` again, and confirm it is at least `inputAmount`. Then leave this file: read `references/quote.md`, quote again, come back to "Floor" and "Simulate", and `cast call` the swap on that new quote. Do not open "Confirm" for the swap until that second `cast call` succeeds. A quote is not a simulation. On a sell, reuse the approved amount. Do not pass "all" again: a reflection token's balance can grow past the approval.
+The approve confirmation shows: the token being approved (full address and symbol), the spender (Portal, full address), the amount in base units and in human units, and the sentence "Exact amount, not unlimited." For Binance Agentic Wallet, run the approve preview from "Send" first and show its fields too. Then go to "Confirm". After the approve is sent, wait for a receipt with status 1, read `allowance` again, and confirm it is at least `inputAmount`. Then leave this file: read `references/quote.md`, quote again, come back to "Floor" and "Simulate", and simulate the swap on that new quote. Do not open "Confirm" for the swap until that second simulation succeeds. A quote is not a simulation. On a sell, reuse the approved amount. Do not pass "all" again: a reflection token's balance can grow past the approval.
 
 ## Floor
 
 Whether a buy cap exists is defined only in `references/tax-and-quota.md` ("No cap wins", including `remaining == 2^256 - 1`). Decide that first. The table below uses that result; do not treat a max-uint `remaining` as a real cap.
 
-Read numbers from `cast` as the first integer on the line only. `cast` prints `1710194868288753060294554 [1.71e24]`. The bracket is display. Do the math with integers (shell `$(( ))` overflows; use Python `int` or JavaScript `BigInt`), never floats.
+Do all math on integers (Python `int` or JavaScript `BigInt`), never floats, and never shell `$(( ))`, which overflows. If your tool prints a display form next to an integer, use only the integer.
 
 ```text
 minOutputAmount = basis * (10000 - slippageBps) / 10000   (round down)
@@ -70,22 +66,24 @@ Pick the first `basis` this way:
 
 ## Simulate
 
-Call the same function with `cast call`, from the trader, with the real value. Do not override balance or allowance. The trader must already hold the input and, for an ERC-20 input, the allowance.
+Run the exact swap as an `eth_call`: `to` Portal, `data` the `swapExactInput` calldata built from the fields above, `from` = `$TRADER`, `value` = the real `value`. Do not override balance or allowance. The trader must already hold the input and, for an ERC-20 input, the allowance.
 
-```bash
-cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
-  "swapExactInput((address,address,uint256,uint256,bytes))(uint256)" \
-  "($INPUT_TOKEN,$OUTPUT_TOKEN,$INPUT_AMOUNT,$MIN_OUT,0x)" \
-  --value $VALUE \
-  --from $TRADER \
-  --rpc-url $RPC
+Illustration (any equivalent eth_call works — see `references/interface.md`):
+
+```typescript
+const simulatedOut = await ethCall({
+  to: PORTAL, abi: PORTAL_ABI, functionName: "swapExactInput",
+  args: [{ inputToken: INPUT_TOKEN, outputToken: OUTPUT_TOKEN, inputAmount: INPUT_AMOUNT,
+           minOutputAmount: MIN_OUT, permitData: "0x" }],
+  from: TRADER, value: VALUE,
+});
 ```
 
-A revert stops the order. Do not widen the floor, and do not show a send summary. Show the revert text, and wait for the user to change the order or the slippage.
+A revert stops the order. Do not widen the floor, and do not show a send summary. Show the revert reason (decoded against the errors in `references/interface.md` when the selector matches), and wait for the user to change the order or the slippage.
 
-The returned integer is the simulated output. Then:
+The returned `uint256` is the simulated output. Then:
 
-- First `basis` was `remaining`, and the simulated output is greater than `remaining`: the swap did not apply the quota cap. Set `basis` to the simulated output, recompute `minOutputAmount`, and run the `cast call` once more with that floor. A revert stops the order. Tell the user the quota view did not reduce the swap.
+- First `basis` was `remaining`, and the simulated output is greater than `remaining`: the swap did not apply the quota cap. Set `basis` to the simulated output, recompute `minOutputAmount`, and simulate once more with that floor. A revert stops the order. Tell the user the quota view did not reduce the swap.
 - First `basis` was `remaining`, and the simulated output is no greater than `remaining`: keep the floor. Tell the user the buy is capped by the quota, that they get at most `remaining`, and that unused input may be refunded.
 - First `basis` was the quote: keep the floor. If the simulated output is below the quote, show both numbers.
 
@@ -93,20 +91,47 @@ A successful simulation is not permission to send.
 
 ## Calldata
 
-Build the calldata from the final fields. The same hex is what the user confirms and what is sent.
+Build the calldata from the final fields with any ABI encoder. The same hex is what the user confirms and what is sent.
 
-```bash
-cast calldata "swapExactInput((address,address,uint256,uint256,bytes))" \
-  "($INPUT_TOKEN,$OUTPUT_TOKEN,$INPUT_AMOUNT,$MIN_OUT,0x)"
+**Swap** — `swapExactInput` with a single tuple argument:
 
-cast calldata "approve(address,uint256)" 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 $INPUT_AMOUNT
+```text
+selector 0xef7ec2e7
+args     (inputToken, outputToken, inputAmount, minOutputAmount, permitData = 0x)
 ```
 
-The swap calldata must start with `0xef7ec2e7`. The approve calldata must start with `0x095ea7b3`, and its amount must not be `type(uint256).max`.
+**Approve** — ERC-20 `approve` on the input token:
+
+```text
+selector 0x095ea7b3
+args     (spender = Portal 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0, amount = inputAmount)
+```
+
+Illustration:
+
+```typescript
+import { encodeFunctionData } from "viem";
+
+const swapData = encodeFunctionData({
+  abi: PORTAL_ABI, functionName: "swapExactInput",
+  args: [{ inputToken: INPUT_TOKEN, outputToken: OUTPUT_TOKEN, inputAmount: INPUT_AMOUNT,
+           minOutputAmount: MIN_OUT, permitData: "0x" }],
+});
+
+const approveData = encodeFunctionData({
+  abi: ERC20_ABI, functionName: "approve", args: [PORTAL, INPUT_AMOUNT],
+});
+```
+
+Checks before using it:
+
+- The swap calldata starts with `0xef7ec2e7`.
+- The approve calldata starts with `0x095ea7b3`, and its amount is not `type(uint256).max`.
+- Decoding the calldata back gives exactly the fields in the summary.
 
 ## Confirm
 
-Do not open this section for a swap until "Simulate" has succeeded on the current quote. After an approve, that means the post-approve quote and the second `cast call`, not the pre-approve numbers.
+Do not open this section for a swap until "Simulate" has succeeded on the current quote. After an approve, that means the post-approve quote and the second simulation, not the pre-approve numbers.
 
 Each transaction gets its own summary and its own confirmation: one for the approve, one for the swap. No other gates (no audit `继续`).
 
@@ -129,19 +154,26 @@ Those three change lists live under `simulationResult`, not at the top of `data`
 
 Only a reply sent after that summary (and, for BAW, after that preview) counts. The reply must be just `yes`, `confirm`, `go ahead`, `确认`, or `同意`. When the host supports choice chips or buttons, present those exact confirm strings plus `取消` / `cancel` (preferred over typing). A chip that submits one of the confirm strings counts. A question, a condition, or a longer sentence that contains one of those words is not a confirmation. Anything earlier does not count.
 
-When the reply arrives, read the chain time before acting on it:
-
-```bash
-cast block latest --field timestamp --rpc-url $RPC
-```
+When the reply arrives, read the latest block's `timestamp` before acting on it.
 
 If that is more than 60 seconds after `$QUOTE_TS` from `references/quote.md`, or the BAW preview expired: the confirmation is void. Quote again, set the floor again, simulate again, preview again, and show **one** new summary + chips (do not ask "retry?"). Never send a call that differs from the one the user confirmed.
 
 ## Send, only after that confirmation
 
+Every transaction is exactly this envelope:
+
+| Field | Swap | Approve |
+|---|---|---|
+| `to` | Portal `0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0` | the input token |
+| `value` | wei integer (BNB buy) or `0` | `0` |
+| `data` | swap calldata from "Calldata" | approve calldata from "Calldata" |
+| `chainId` | `56` | `56` |
+
+No gas limit and no gas-price fields.
+
 ### Path B, or path A with BAW
 
-Do not use `cast send`. The preview runs before the confirmation. Only `execute` runs after it.
+Do not hand the transaction to any other signer. The preview runs before the confirmation. Only `execute` runs after it.
 
 ```bash
 # Before the confirmation:
@@ -157,29 +189,26 @@ No `--gasLimit` and no gas-price flags. A `requestId` from another chat, another
 
 Do not change `to`, `value`, or the calldata after confirmation. Then go to `references/receipt.md`.
 
-### Path A with cast only
+### Path A with a non-BAW signer
 
-Use a hardware wallet (`--ledger` or `--trezor`) or a Foundry keystore (`--account <name>`). Browser wallets and WalletConnect are out of scope. Do not use `--private-key`, `--mnemonic`, `--interactive`, or a password on the command line. Do not add `--gas-limit`. Print the `cast send` command. Do not run it from the agent shell: the password or device confirm is interactive. The user runs it in their own terminal and pastes the hash.
+The user signs. The agent does not hold the key and does not run the signing step: a hardware-wallet or keystore confirm is interactive. Do not accept a private key, a mnemonic, or a password in chat or on a command line.
 
-The printed command has no shell variables. Substitute every value as a literal: addresses in full, amounts as base-unit integers, the RPC URL, and the signer flag. Always include `--from <trader>` and `--chain 56` plus `--rpc-url <rpc>` (same chain-56 RPC as preflight). The arguments must match the confirmed summary character for character. Do not print a keyed RPC URL that holds a secret; use the public fallback from `references/preflight.md`.
+Give the user the envelope above with every value written out literally: `to` in full, `value` as a base-unit integer, `data` as the full hex, and chain ID `56`. They broadcast it with whatever tool drives their signer and paste the transaction hash back. The values must match the confirmed summary character for character. Do not give a keyed RPC URL that holds a secret; use the public fallback from `references/preflight.md`.
 
-For a Ledger or Trezor account that is not the default path, also pass the user's `--mnemonic-derivation-path`; ask for it, do not guess.
-
-Tell the user to run it now. If more than 60 seconds of chain time have passed since `$QUOTE_TS`, do **not** send: go back to Step 4 and quote again. A confirmation that is still unused after that window is void. If the user already broadcast a late transaction, do not send another; judge that hash with `references/receipt.md` (it may note the late window). The swap has no deadline argument; `minOutputAmount` is the only on-chain guard after broadcast.
+If the user asks for a ready-to-run command for their tool, print one that carries exactly those values and no gas-limit flag. For example, with Foundry `cast` and a hardware wallet or keystore:
 
 ```bash
-# Approve, after the approve confirmation (literal values):
-cast send <input token> \
-  "approve(address,uint256)" \
-  0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 <input amount> \
-  --from <trader> --chain 56 --rpc-url <rpc> <signer flag>
+# Swap (literal values, no shell variables):
+cast send 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 <swap calldata hex> \
+  --value <value> --from <trader> --chain 56 --rpc-url <rpc> <--ledger | --trezor | --account <name>>
 
-# Swap, after the swap confirmation (literal values):
-cast send 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
-  "swapExactInput((address,address,uint256,uint256,bytes))" \
-  "(<input token>,<output token>,<input amount>,<min out>,0x)" \
-  --value <value> \
-  --from <trader> --chain 56 --rpc-url <rpc> <signer flag>
+# Approve:
+cast send <input token> <approve calldata hex> \
+  --from <trader> --chain 56 --rpc-url <rpc> <--ledger | --trezor | --account <name>>
 ```
+
+For a Ledger or Trezor account that is not the default path, the user's derivation path is also needed; ask for it, do not guess.
+
+Tell the user to send it now. If more than 60 seconds of chain time have passed since `$QUOTE_TS`, do **not** send: go back to Step 4 and quote again. A confirmation that is still unused after that window is void. If the user already broadcast a late transaction, do not send another; judge that hash with `references/receipt.md` (it may note the late window). The swap has no deadline argument; `minOutputAmount` is the only on-chain guard after broadcast.
 
 Do not change `to`, `value`, or the calldata after confirmation. Then go to `references/receipt.md`.

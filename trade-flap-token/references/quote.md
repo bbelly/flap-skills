@@ -1,22 +1,32 @@
 # Quote
 
-`quoteExactInput` is not a `view` function. Read it with `cast call`. Do not send it.
+`quoteExactInput` is not a `view` function (it is `nonpayable`). Read it with an `eth_call`. Never send it as a transaction.
 
 Pin the quote to one block and record that block's timestamp:
 
-```bash
-QUOTE_BLOCK=$(cast block-number --rpc-url $RPC)
-QUOTE_TS=$(cast block $QUOTE_BLOCK --field timestamp --rpc-url $RPC)
+1. Read the latest block number → `$QUOTE_BLOCK`.
+2. Read block `$QUOTE_BLOCK` and take its `timestamp` → `$QUOTE_TS`.
+3. `eth_call` Portal at block `$QUOTE_BLOCK`, with `from` set to `$TRADER` and `value` 0:
 
-cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
-  "quoteExactInput((address,address,uint256))(uint256)" \
-  "($INPUT_TOKEN,$OUTPUT_TOKEN,$INPUT_AMOUNT)" \
-  --from $TRADER \
-  --block $QUOTE_BLOCK \
-  --rpc-url $RPC
+   ```text
+   quoteExactInput((address inputToken, address outputToken, uint256 inputAmount)) returns (uint256 outputAmount)
+   selector 0xfc847c2b
+   argument: ($INPUT_TOKEN, $OUTPUT_TOKEN, $INPUT_AMOUNT)
+   ```
+
+Illustration (any equivalent eth_call works — see `references/interface.md`):
+
+```typescript
+const QUOTE_BLOCK = await client.getBlockNumber();
+const QUOTE_TS = (await client.getBlock({ blockNumber: QUOTE_BLOCK })).timestamp;
+const quote = await ethCall({
+  to: PORTAL, abi: PORTAL_ABI, functionName: "quoteExactInput",
+  args: [{ inputToken: INPUT_TOKEN, outputToken: OUTPUT_TOKEN, inputAmount: INPUT_AMOUNT }],
+  from: TRADER, blockNumber: QUOTE_BLOCK,
+});
 ```
 
-`$TRADER` is the address that will send the swap. The selector is `0xfc847c2b`. Show `$QUOTE_BLOCK` in the confirmation. The freshness window is 60 seconds of chain time after `$QUOTE_TS`, measured with the latest block timestamp, not the chat clock.
+`$TRADER` is the address that will send the swap. Show `$QUOTE_BLOCK` in the confirmation. The freshness window is 60 seconds of chain time after `$QUOTE_TS`, measured with the latest block timestamp, not the chat clock.
 
 **Timing for BAW Portal trades:** do not open the confirmation until `contract-call preview` has succeeded. Then set `$QUOTE_TS` to the latest block timestamp at preview success (keep `$QUOTE_BLOCK` from this quote pass). That way prep time does not burn the 60s confirm window. In the summary, say the user should confirm within ~50s.
 
@@ -28,7 +38,7 @@ Paths A/B only. Path C uses `baw market-order quote` in `references/graduated.md
 
 After an approve receipt, this file is not the last step. Quote here, then go to `references/swap.md` "Floor" and "Simulate". Do not confirm the swap on this quote alone.
 
-`cast` prints the result as `<integer> [<short form>]`, for example `1710194868288753060294554 [1.71e24]`. Use only the integer. The bracket is display, not a value.
+The result is a single `uint256` in the output token's base units. Keep it as an integer; if your tool also prints a display form (for example `cast` prints `1710194868288753060294554 [1.71e24]`), use only the integer.
 
 ## Which tokens
 

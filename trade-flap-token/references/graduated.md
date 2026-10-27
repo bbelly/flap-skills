@@ -12,7 +12,7 @@ Use this file when `getTokenV8Safe` `status` is 4 (`DEX`). The token has left th
 
 Binance Agentic Wallet only. The default buy/sell path is the wallet's own market swap (`baw market-order`), which uses Binance Web3 Wallet routing. This skill does not pick pools or routers.
 
-If BAW is not `CONNECTED`, stop and ask the user to sign in. Do not offer cast.
+If BAW is not `CONNECTED`, stop and ask the user to sign in. Do not offer another signer.
 
 Developer Mode is **not** required for `market-order` (it is required for Portal `contract-call` on paths A/B). Still run `baw wallet status` / `address` so `$TRADER` is the chain-`"56"` entry.
 

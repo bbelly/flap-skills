@@ -6,27 +6,27 @@ description: >-
   an NFT from that token's collection; graduated tokens use BAW market-order
   routing. Use for bonding-curve or graduated Flap buys and sells. Not for
   launching tokens or automatic trading.
-metadata: {"openclaw": {"always": false, "emoji": "🦋", "homepage": "https://docs.flap.sh", "requires": {"anyBins": ["cast", "baw", "node"]}}}
+metadata: {"openclaw": {"always": false, "emoji": "🦋", "homepage": "https://docs.flap.sh", "requires": {"anyBins": ["baw", "node"]}}}
 ---
 
 # 🦋 Trade a Flap Token
 
 Buy or sell a [Flap](https://docs.flap.sh) token on BNB Chain. Execute each step in order. Read each reference file at the step that requires it — do not pre-load them.
 
-This skill tells you what to call. It does not ship scripts. Prefer Foundry `cast` for Portal eth_calls. If `cast` is missing, **tell the user to install it** (`foundryup`) before improvising — see `references/preflight.md` §4. A pinned one-off `viem` script is the only allowed eth_call fallback; do not scrape logs. Graduated swaps use the Binance Agentic Wallet market-order path. Launching a token is a different skill in this repo: `launch-bnb-token-on-flap`.
+This skill tells you what to call. It does not ship scripts and does not depend on any one tool. `references/interface.md` lists every contract, function signature, selector, return layout, error, and event; the other files say which call to make and when. Make the reads and simulations with whatever EVM tooling you already have — `viem`, `ethers`, `web3.py`, Foundry `cast`, or raw JSON-RPC `eth_call`. Do not scrape logs or past chat output instead of making the call. Graduated swaps use the Binance Agentic Wallet market-order path. Launching a token is a different skill in this repo: `launch-bnb-token-on-flap`.
 
 ## How to use this skill (reference + fallback)
 
 This skill is an **externalized reference playbook**, not a guarantee that every agent runtime can run every step the same way. Tooling, host UI, installed skills, and wallet bridges differ.
 
 1. **Prefer this skill's path first** (routes A/B/C, Portal vs market-order, confirmations, NFT checks).
-2. If a **tooling** step is impossible (missing `cast`, host cannot do chips, audit skill cannot load, RPC shape differs, etc.): say what blocked you, then use only the **narrow** fallbacks allowed below. Missing `baw` on paths B/C is **not** a fallback case — stop and ask the user to install/sign in (see `preflight.md`).
+2. If a **tooling** step is impossible (no way to make an `eth_call`, host cannot do chips, audit skill cannot load, RPC shape differs, etc.): say what blocked you, then use only the **narrow** fallbacks allowed below. Missing `baw` on paths B/C is **not** a fallback case — stop and ask the user to install/sign in (see `preflight.md`).
 3. Allowed capability fallbacks (same token, side, amount, chain 56):
-   - Missing `cast`: tell the user to install Foundry; after that notice, a one-off pinned `viem` eth_call script per `preflight.md` §4. Do not scrape logs. Do not invent other RPC scrapers.
-   - Building the **same** Portal `swapExactInput` / approve calldata another way when `cast calldata` is unavailable (still Portal `to`, same args).
+   - No EVM library installed: a one-off script in a temporary directory outside this skill, or raw JSON-RPC `eth_call` against the chain-56 RPC, per `preflight.md` §4. Do not scrape logs. Do not invent other RPC scrapers.
+   - Building the **same** Portal `swapExactInput` / approve calldata with a different encoder (still Portal `to`, same function, same args — see `references/interface.md`).
    - Host confirm UI that still submits an exact confirm word (`确认` / `yes` / …).
 4. Fallback is **not** a license to change the route or signer. **Forbidden under any fallback:**
-   - Path B or C with cast / hardware / non-BAW signer
+   - Path B or C with a hardware wallet, keystore, or any non-BAW signer
    - Hand-built Pancake / Universal Router / other DEX calldata (path C stays BAW `market-order` only)
    - Jumping a path-B curve trade to `market-order` to skip NFT or Portal
    - `type(uint256).max` / unlimited approve
@@ -43,20 +43,20 @@ Trades are time-sensitive (Portal quote / BAW `requestId` freshness ≈ **60s**)
 2. **One user-facing gate per on-chain action.** For a BNB buy that needs no approve: one summary → one confirm → send. For sell / ERC-20 buy that needs approve: approve confirm, then after receipt a **new** quote+preview+swap confirm (still only those two). Never invent a third gate (`继续`, "are you sure?", test-sequencing questions).
 3. **Audit never blocks.** Missing / failed audit → `audit: unavailable` **inside** the same trade summary. Asking for `继续` / `continue` solely because audit is missing is a **skill violation**.
 4. **Pin freshness late.** Finish simulate + BAW preview first, then set / refresh `$QUOTE_TS` (and show `expiresAt` when BAW returns it) in the confirmation. Put one line in the summary: confirm within ~50s or the quote will be re-done. Prefer clickable chips: `确认` and `取消` only (or the English confirm words as chips). Do not use labels like "Buy now".
-5. **Ask only when blocked.** Allowed pauses: missing CA / side / amount+unit; missing `cast` / `baw` (install hint, see preflight §4); Path B no NFT; BAW required but signed out; hard revert / preview `351803`; user must pick a **new** slippage after a documented slip failure. Do **not** ask how to order internal test steps during a normal trade. Do **not** compensate for missing `cast` by scanning logs.
+5. **Ask only when blocked.** Allowed pauses: missing CA / side / amount+unit; no way to make an `eth_call` or missing `baw` (see preflight §4); Path B no NFT; BAW required but signed out; hard revert / preview `351803`; user must pick a **new** slippage after a documented slip failure. Do **not** ask how to order internal test steps during a normal trade. Do **not** compensate for a missing tool by scanning logs.
 6. **On expiry or slip failure:** re-quote (and re-preview) once automatically, then show a **fresh** summary + chips. Do not raise slippage yourself; on path C slip failure, offer chips for user-chosen bumps (e.g. `8%` / `10%` / `取消`) after showing the error.
 
 ## Routes
 
 | Path | When | How | Signer |
 |---|---|---|---|
-| A | Inner market, `nftGate == 0` | Portal `swapExactInput` | BAW first; ask cast only if BAW is not signed in |
+| A | Inner market, `nftGate == 0` | Portal `swapExactInput` | BAW first; offer another signer only if BAW is not signed in |
 | B | Inner market, `nftGate != 0` | Portal `swapExactInput` after NFT check | **BAW only** |
 | C | `status == 4` (graduated) | BAW `market-order` (wallet default routing) | **BAW only**; NFT gate does not apply |
 
 The Agent ID gate is **per token** (`nftGate(token)`), not a site-wide NFT. It applies only on the curve. After graduation, do not require an NFT.
 
-Signer rules: detect Binance Agentic Wallet first and use it without asking when signed in. Paths B and C never offer cast. Path A may ask once for cast only when BAW is not signed in.
+Signer rules: detect Binance Agentic Wallet first and use it without asking when signed in. Paths B and C never offer another signer. Path A may ask once for another signer (hardware wallet or keystore) only when BAW is not signed in.
 
 The limits below are mandatory even though they are not code. A missing file, a failed check, a failed simulation, or a missing confirmation means stop. Do not send.
 
@@ -80,6 +80,7 @@ Read `references/safety.md` before building a call. In short:
 skills/trade-flap-token/
 ├── SKILL.md                 ← this file
 └── references/
+    ├── interface.md         ← contracts, ABIs, selectors, errors, events
     ├── safety.md            ← rules that outrank the chat
     ├── preflight.md         ← Step 0: chain, wallet, gas, BAW
     ├── token-state.md       ← Step 2: status, nftGate, route A/B/C
@@ -98,7 +99,7 @@ skills/trade-flap-token/
 
 Required files: every file listed under `references/` above.
 
-If any file is missing, stop. Read `references/safety.md` and `references/preflight.md`. Finish chain 56, Portal `version()` starting with `v5.`, BAW detection, and the gas reserve. Do not finalize a cast signer until Step 2 shows path A and BAW is unavailable.
+If any file is missing, stop. Read `references/safety.md`, `references/interface.md`, and `references/preflight.md`. Finish chain 56, Portal `version()` starting with `v5.`, BAW detection, and the gas reserve. Do not finalize a non-BAW signer until Step 2 shows path A and BAW is unavailable.
 
 ---
 
@@ -157,11 +158,11 @@ Paths A/B: read `references/swap.md`.
 
 Buy with BNB is one Portal call. `inputToken` is the zero address. `value` is the BNB amount in wei. There is no quote-token approve.
 
-Buy with an ERC-20, or a sell: if the allowance is short, the approve is its own transaction. `cast call` it first; a USDT-style token may need an `approve(Portal, 0)` reset as one more separate transaction. It goes through Step 6 alone, for this amount only. Wait for that receipt, then return to Step 4, then this step. Quote again, set the floor again, and `cast call` the swap again. A new quote is not a simulation. Do not open a swap confirmation until that second `cast call` succeeds. `type(uint256).max` stops the flow. `permitData` stays `0x`.
+Buy with an ERC-20, or a sell: if the allowance is short, the approve is its own transaction. Simulate it first (an `eth_call` of `approve` from the trader); a USDT-style token may need an `approve(Portal, 0)` reset as one more separate transaction. It goes through Step 6 alone, for this amount only. Wait for that receipt, then return to Step 4, then this step. Quote again, set the floor again, and simulate the swap again. A new quote is not a simulation. Do not open a swap confirmation until that second simulation succeeds. `type(uint256).max` stops the flow. `permitData` stays `0x`.
 
-`cast call` the swap on the real state before asking to send. A revert stops the order. With a buy cap and a quote above `remaining`, the first simulation uses `remaining` as the floor basis. If the simulated output is above `remaining`, set `basis` to that simulated output, recompute `minOutputAmount` with slippage, and simulate once more.
+Simulate the swap — an `eth_call` of `swapExactInput` from the trader, with the real `value` — on the real state before asking to send. A revert stops the order. With a buy cap and a quote above `remaining`, the first simulation uses `remaining` as the floor basis. If the simulated output is above `remaining`, set `basis` to that simulated output, recompute `minOutputAmount` with slippage, and simulate once more.
 
-Path B: cast send is not allowed. Approves and swaps go through BAW `contract-call` only.
+Path B: no non-BAW signer. Approves and swaps go through BAW `contract-call` only.
 
 ---
 
@@ -171,7 +172,7 @@ Path B: cast send is not allowed. Approves and swaps go through BAW `contract-ca
 
 **Paths A/B:** show the summary in `references/swap.md` as **one** message that already includes BAW preview fields when used. Run `contract-call preview` **before** that message. Put `parsedTx`, `simulationResult.balanceChanges`, `simulationResult.allowanceChanges`, `simulationResult.authorityChanges`, `risks`, `requireConfirmation`, and `expiresAt` in the same summary. Path B also includes the Agent ID lines from `agent-id-gate.md`. When Portal slippage is still 15%, include the no-MEV sentence. Include: confirm within ~50s or this quote is void.
 
-Only a standalone `yes`, `confirm`, `go ahead`, `确认`, or `同意`, received after that summary (and BAW preview when used), counts. Prefer chips: those confirm words plus `取消` / `cancel`. Do not invent "Buy now". A longer sentence that merely contains a confirm word is not valid. Then: BAW `contract-call execute` that preview's `requestId`. Path A with cast: print literal `cast send` with `--from <trader>` for the user to run. Do not pass a gas limit. Do not change the call after confirmation. Errors are in `references/errors.md`.
+Only a standalone `yes`, `confirm`, `go ahead`, `确认`, or `同意`, received after that summary (and BAW preview when used), counts. Prefer chips: those confirm words plus `取消` / `cancel`. Do not invent "Buy now". A longer sentence that merely contains a confirm word is not valid. Then: BAW `contract-call execute` that preview's `requestId`. Path A with another signer: give the user the exact transaction (`to`, `value`, `data`, chain `56`) for their own signer, per `swap.md` "Send". Do not pass a gas limit. Do not change the call after confirmation. Errors are in `references/errors.md`.
 
 ---
 

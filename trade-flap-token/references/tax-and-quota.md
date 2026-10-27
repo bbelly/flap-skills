@@ -22,17 +22,12 @@ Follow `references/safety.md`. Try the audit on a buy; if unavailable, warn in t
 
 Read this for a **buy** on path A or B (inner market). Skip it for a sell. Skip it on path C (graduated); market-order has no Portal quota.
 
-```bash
-cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
-  "maxBuyPerOrigin(address)(uint16,uint256)" \
-  $TOKEN \
-  --rpc-url $RPC
+Two Portal views (types in `references/interface.md`):
 
-cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
-  "buyQuotaOf(address,address)(uint256,uint256)" \
-  $TOKEN $TRADER \
-  --rpc-url $RPC
-```
+| Call | Selector | Returns |
+|---|---|---|
+| `maxBuyPerOrigin(token)` | `0x4b02c8e9` | `(uint16 bps, uint256 maxBuyAmount)` |
+| `buyQuotaOf(token, $TRADER)` | `0x929b098c` | `(uint256 bought, uint256 remaining)` |
 
 `buyQuotaOf` returns `(bought, remaining)` in token base units. `$TRADER` is the address that will send the transaction. Quota is keyed by `tx.origin`. A sell does not restore a non-gated holding-style view the same way; on Agent ID-gated tokens, sells reduce `netBought` (see below). A Binance Agentic Wallet `contract-call` is sent from the BAW address itself (observed in real fills), so `buyQuotaOf(token, <BAW address>)` is this user's quota.
 

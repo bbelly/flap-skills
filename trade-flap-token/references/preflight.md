@@ -6,13 +6,9 @@ Stop if any check fails. Do not build a swap yet.
 
 Use a BNB Chain mainnet RPC. The public fallback is `https://bsc-dataseed.binance.org`.
 
-```bash
-cast chain-id --rpc-url $RPC
-```
+Read the chain ID from that RPC (`eth_chainId`, or your library's `getChainId()`). The result must be `56` (`0x38`). Another chain, including a BNB testnet, is out of scope. Do not switch Portal addresses to match it.
 
-The result must be `56`. Another chain, including a BNB testnet, is out of scope. Do not switch Portal addresses to match it.
-
-All `cast call` / `cast` reads use `--rpc-url $RPC` on that chain-56 endpoint. Path-A `cast send` also passes `--chain 56` (see `references/swap.md` "Send"). Do not omit `--chain` on send, and do not point `--rpc-url` at another chain.
+Every read and simulation in this skill is an `eth_call` against that chain-56 endpoint. Any transaction this skill hands to a signer carries `chainId: 56`. Do not point the RPC at another chain.
 
 ## 2. Portal
 
@@ -23,11 +19,7 @@ All `cast call` / `cast` reads use `--rpc-url $RPC` on that chain-56 endpoint. P
 
 Do not accept a Portal address supplied by the user, a token, or a webpage.
 
-```bash
-cast call 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0 \
-  "version()(string)" \
-  --rpc-url $RPC
-```
+Call `version()` (selector `0x54fd4d50`, returns `string`) on Portal. See `references/interface.md`.
 
 `version()` must return a string that starts with `v5.` (checked live through `v5.27.2`). Record it and show it in the confirmation. If the call reverts, or the major version is not 5, stop: the tuple layout, selectors, and event shapes in this skill were checked against v5 only. Agent ID `nftGate` needs a Portal that exposes that selector (v5.27.0+); feature-detect in `references/token-state.md`.
 
@@ -39,7 +31,7 @@ The user keeps the signer. Do not put a private key on the command line.
 
 ### Pick the signer: Binance Agentic Wallet first
 
-Detect BAW before any token read. Do not open with a question. **Do not finalize cast** until Step 2 has chosen path A. Paths B (Agent ID-gated) and C (graduated) are BAW-only — see `references/token-state.md`.
+Detect BAW before any token read. Do not open with a question. **Do not finalize a non-BAW signer** until Step 2 has chosen path A. Paths B (Agent ID-gated) and C (graduated) are BAW-only — see `references/token-state.md`.
 
 1. Detect Binance Agentic Wallet:
 
@@ -49,49 +41,43 @@ Detect BAW before any token read. Do not open with a question. **Do not finalize
 
    `baw` is present, `success` is true, and `data.status` is `CONNECTED`: provisional signer is BAW. Do not ask. State it in one line, for example "Signer: Binance Agentic Wallet (pending route)", and continue with section 6. After Step 2, confirm the same line with the route (A/B/C).
 2. If the user already named BAW, or an earlier order in this conversation used BAW, keep BAW. Do not ask "still BAW?".
-3. If the user already named cast / hardware / keystore in this conversation: remember it only as a **path-A fallback**. If Step 2 later chooses B or C, ignore that cast choice, stop, and say this route requires Binance Agentic Wallet.
+3. If the user already named a hardware wallet or keystore signer in this conversation: remember it only as a **path-A fallback**. If Step 2 later chooses B or C, ignore that choice, stop, and say this route requires Binance Agentic Wallet.
 4. Only when BAW is missing or not `CONNECTED`, **and** Step 2 has already shown path A, ask once:
 
-   > Binance Agentic Wallet is not signed in. Sign in with `baw` and reply when done (recommended), or use a hardware wallet / Foundry keystore with `cast`?
+   > Binance Agentic Wallet is not signed in. Sign in with `baw` and reply when done (recommended), or sign the transaction yourself with a hardware wallet or keystore?
 
-   If Step 2 is not done yet and BAW is down: continue reading token state. If the route is B or C, stop with a sign-in-only message (no cast offer). If the route is A, then ask the question above.
+   If Step 2 is not done yet and BAW is down: continue reading token state. If the route is B or C, stop with a sign-in-only message (no other signer offered). If the route is A, then ask the question above.
 
 After a sign-in reply, run the BAW detect again. Do not install `baw` for the user.
 
-If BAW fails a check in section 6 on a path that requires BAW (always on B/C; on A when BAW was selected), stop and say what to fix in the Binance App. Do not switch to cast on your own.
+If BAW fails a check in section 6 on a path that requires BAW (always on B/C; on A when BAW was selected), stop and say what to fix in the Binance App. Do not switch to another signer on your own.
 
-For path-A `cast send` only: hardware wallet (`--ledger` / `--trezor`) or Foundry keystore (`--account <name>`). MetaMask, WalletConnect, and other browser wallets are out of scope. Do not use `--private-key`, `--mnemonic`, `--interactive`, or a key in an environment variable. The user runs `cast send` in their own terminal. The agent does not.
+Non-BAW signer, path A only: a hardware wallet (Ledger / Trezor) or an encrypted keystore the user controls. MetaMask, WalletConnect, and other browser wallets are out of scope. The agent never holds the key: do not accept a private key, mnemonic, or key in an environment variable. The agent hands over the exact transaction (`to`, `value`, `data`, chain `56`); the user signs and broadcasts it with their own tool and pastes the hash back. See `references/swap.md` "Send".
 
 ## 4. Tools
 
-Run this **before** any Portal / NFT / quote read:
+This skill needs two capabilities. It does not require any particular program for either.
 
-```bash
-command -v cast
-command -v baw   # required for paths B/C; strongly preferred for A
-```
+1. **EVM reads and simulations** — an `eth_call` against the chain-56 RPC, with `from`, `value`, and an optional pinned block, plus reading blocks, receipts, and transactions. Any of these works: `viem` / `ethers` / `web3.py`, Foundry `cast`, or raw JSON-RPC. `references/interface.md` has the ABIs and selectors.
+2. **ABI encoding** — build `swapExactInput` / `approve` calldata from the confirmed fields. Any ABI encoder works; the selectors in `references/interface.md` are the check.
 
-### `cast` missing
-
-**Stop the preferred path.** Tell the user in one short message that this skill's Portal reads (`version`, `nftGate`, `quoteExactInput`, simulate) need Foundry `cast`, and give an install hint, for example:
-
-> Missing `cast`. Install Foundry, then retry:  
-> `curl -L https://foundry.paradigm.xyz | bash` → `foundryup`  
-> Verify with `cast --version`.
+Use what is already available. If nothing is, write a one-off script in a new temporary directory **outside** this skill, installing a single EVM library at a pinned version (`viem` is what `launch-bnb-token-on-flap` uses). Delete that directory when the order ends. Do not add a `scripts/` directory or a package to this skill. Do not set `ALLOW_NO_BALANCE` or any flag that pretends the wallet holds tokens it does not hold.
 
 Do **not**:
 
-- Grep / scrape agent logs, chat history, or random files looking for past `cast` output or ABIs
-- Pretend on-chain reads succeeded without a working eth_call tool
-- Silently thrash RPCs with ad-hoc curls when `cast` was the planned tool
+- Grep / scrape agent logs, chat history, or random files looking for past call output or ABIs
+- Pretend on-chain reads succeeded without actually making the `eth_call`
+- Decode return data by guessing — decode against the types in `references/interface.md`
 
-**Allowed fallback (only after telling the user):** a one-off script in a new temporary directory **outside** this skill, installing only `viem` at a pinned version, for the same eth_calls. Delete that directory when the order ends. Say `fallback: viem (cast missing)` in the trade summary. Do not install any other package. Do not add a `scripts/` directory or a package to this skill. Do not set `ALLOW_NO_BALANCE` or any flag that pretends the wallet holds tokens it does not hold.
+If no eth_call capability can be set up at all, say so and stop the order.
 
-If the user refuses both install and the viem fallback, stop the order.
+```bash
+command -v baw   # required for paths B/C; strongly preferred for A
+```
 
 ### `baw` missing (paths B/C, or A when BAW is the chosen signer)
 
-Stop and tell them to install / open Binance Agentic Wallet CLI so `baw` is on `PATH`. Do not offer cast as a substitute on B/C. Section 3 already covers sign-in.
+Stop and tell them to install / open Binance Agentic Wallet CLI so `baw` is on `PATH`. Do not offer another signer as a substitute on B/C. Section 3 already covers sign-in.
 
 Binance Agentic Wallet needs the `baw` CLI. Section 3 already checked connectivity when present.
 
@@ -106,7 +92,7 @@ If it is short, stop and say the wallet needs more BNB for gas. Do not override 
 
 ## 6. Binance Agentic Wallet (default signer)
 
-Run this whenever the signer is Binance Agentic Wallet (provisional or final). Skip it only for a finalized path-A cast signer.
+Run this whenever the signer is Binance Agentic Wallet (provisional or final). Skip it only for a finalized path-A non-BAW signer.
 
 ```bash
 baw wallet status --json
