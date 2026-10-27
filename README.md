@@ -6,7 +6,7 @@ A collection of AI agent skills for [Flap](https://docs.flap.sh). Skills are com
 
 | Skill | Description |
 |-------|-------------|
-| [launch-bnb-token-on-flap](./launch-bnb-token-on-flap/SKILL.md) | Launch a token on Flap (BNB Chain) |
+| [launch-bnb-token-on-flap](./launch-bnb-token-on-flap/SKILL.md) | Launch a Flap Tax Token V3 on Flap (BNB Chain), quoted against BNB or any other Flap-supported quote token |
 
 ## Usage
 
