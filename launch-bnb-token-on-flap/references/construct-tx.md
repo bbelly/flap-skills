@@ -33,7 +33,7 @@ const value = isNativeQuote ? quoteAmt : 0n;
 
 ## A — Tax token without vault (Portal, TOKEN_TAXED_V3)
 
-Set `migratorType` to `1` (V2_MIGRATOR) and `tokenVersion` to `6` (TOKEN_TAXED_V3). Fill in the tax parameters as determined in Step 4. 
+Set `migratorType` to `1` (V2_MIGRATOR) and `tokenVersion` to `6` (TOKEN_TAXED_V3). Fill in the tax parameters as determined in Step 4. For an Agent ID launch, replace `extensionID` and `extensionData` with the values from `references/agent-id.md`; the rest of the struct is unchanged.
 
 ```typescript
 import { encodeFunctionData } from "viem";
@@ -73,6 +73,8 @@ const data  = encodeFunctionData({
 
 ## B — Tax token with vault (VaultPortal, TOKEN_TAXED_V3)
 
+For an Agent ID launch, replace `extensionID` and `extensionData` with the values from `references/agent-id.md`; the rest of the struct is unchanged.
+
 ```typescript
 const to    = "0x90497450f2a706f1951b5bdda52B4E5d16f34C06"; // VaultPortal
 const data  = encodeFunctionData({
@@ -107,6 +109,19 @@ const data  = encodeFunctionData({
   }],
 });
 ```
+
+## C — Agent ID launch (optional)
+
+Use section A or B unchanged, but set:
+
+```typescript
+extensionID:   EXTENSION_ARRAY_ID,   // keccak256("flap.extensions.v1")
+extensionData: agentIdExtensionData, // Extension[] from references/agent-id.md
+```
+
+The Agent ID gate is checked at creation time (`newFeatureSwitch` / `nftWhitelisted`), and the
+resulting token automatically gets a 2% per-origin buy cap. See `references/agent-id.md` for
+the encoding, preflight checks, examples, and post-launch verification.
 
 ## Transaction envelope summary
 
