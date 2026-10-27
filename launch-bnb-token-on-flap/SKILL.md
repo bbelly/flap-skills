@@ -31,7 +31,8 @@ skills/launch-bnb-token-on-flap/
     ├── meta-upload.md              ← Steps 3 & 6: metadata upload
     ├── tax-params.md               ← Step 4: tax parameters
     ├── salt-finding.md             ← Step 7: vanity salt mining
-    └── construct-tx.md             ← Step 8: transaction construction
+    ├── construct-tx.md             ← Step 8: transaction construction
+    └── agent-id.md                 ← Optional: Agent ID launch
 ```
 
 ---
@@ -49,6 +50,7 @@ Before starting, verify that all required reference files are present. If any ar
 - `references/tax-params.md`
 - `references/salt-finding.md`
 - `references/construct-tx.md`
+- `references/agent-id.md`
 
 Check each file exists, then read `references/preflight.md` and verify every prerequisite is satisfied before continuing.
 
@@ -65,6 +67,9 @@ Determine the token configuration:
 2. **Which quote token to launch against?** Read `references/quote-tokens.md` to fetch the
    current list of supported quote tokens on BNB Chain and resolve the `quoteToken` address and
    `decimals` to use in later steps. Defaults to native BNB if the user has no preference.
+3. **Should the token use an Agent ID?** Read `references/agent-id.md`. If yes, resolve the
+   Agent ID collection and check `newFeatureSwitch()` and `nftWhitelisted(agentId)` before
+   building the transaction. The 2% per-origin buy cap is enabled automatically.
 
 Decision map:
 
@@ -119,6 +124,10 @@ the `msg.value` of the transaction; for any other (ERC-20) quote token, `msg.val
 wallet must instead hold and approve `quoteAmt` of that token beforehand. Use `0` to skip the
 initial buy.
 
+For an Agent ID launch, the dev buy is gated too: the buyer must hold the Agent ID collection, and
+the 2% per-origin cap applies. A dev buy above the remaining allowance fills to the cap and
+refunds the excess; it does not revert. See `references/agent-id.md`.
+
 ---
 
 ## Step 6 — Upload metadata
@@ -139,10 +148,10 @@ Save the resulting `salt` (bytes32) and the predicted `tokenAddress`.
 
 ## Step 8 — Construct the EVM transaction
 
-Read `references/construct-tx.md` to assemble the full calldata, `value`, and `to` address for the correct contract entry point (`Portal` or `VaultPortal`).
+Read `references/construct-tx.md` to assemble the full calldata, `value`, and `to` address for the correct contract entry point (`Portal` or `VaultPortal`). For an Agent ID launch, use the `extensionID` / `extensionData` values from `references/agent-id.md`.
 
 ---
 
 ## Step 9 — Send the transaction
 
-Broadcast the constructed transaction to BNB Chain using the available wallet. After confirmation, report the token address and a link to `https://flap.sh/bnb/<tokenAddress>`.
+Broadcast the constructed transaction to BNB Chain using the available wallet. After confirmation, report the token address and a link to `https://flap.sh/bnb/<tokenAddress>`. For an Agent ID launch, also verify `nftGate(token)` equals the chosen Agent ID collection.
